@@ -21,8 +21,6 @@ Launch the application in either server or client mode. Use the following comman
   Options:  
   - `-port` : Specify a port for the server to listen on (default is 22).  
     Example: `server -port 12345`
-  - `-norcv` : Disables the server’s ability to receive files.  
-    Example: `server -port 12345 -norcv`
 
 - **connect**  
   Connects the client to a specified server address and port.  
