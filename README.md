@@ -18,9 +18,10 @@ Launch the application in either server or client mode. Use the following comman
 
 - **server**  
   Runs the server side of the application.  
-  Options:  
-  - `-port` : Specify a port for the server to listen on (default is 22).  
-    Example: `server -port 12345`
+  If no port is specified, the application defaults to port 22.  
+  Example:  
+  - Run server on the default port: `server`
+  - Run server on a specified port: `server -port 12345`
 
 - **connect**  
   Connects the client to a specified server address and port.  
@@ -34,16 +35,10 @@ Launch the application in either server or client mode. Use the following comman
   Usage: `send <filename>`  
   Example: `send data.txt`
 
-- **receive**  
-  Enables the server to receive files from a client connection.  
-  By default, the server is configured to receive files unless the `-norcv` option is used.  
-  Usage: `receive <IP:port>`  
-  Example: `receive 255.255.255.255:12345`
-
 - **cd**  
   Changes the current directory.  
   Usage: `cd <path>`  
-  Example: `cd /path/to/directory`
+  Example: `cd path/to/directory`
 
 - **ls**  
   Lists all files in the current directory.  
