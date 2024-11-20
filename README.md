@@ -21,7 +21,7 @@ Launch the application in either server or client mode. Use the following comman
   If no port is specified, the application defaults to port 22.  
   Example:  
   - Run server on the default port: `server`
-  - Run server on a specified port: `server -port 12345`
+  - Run server on a specified port: `server 12345`
 
 - **connect**  
   Connects the client to a specified server address and port.  
