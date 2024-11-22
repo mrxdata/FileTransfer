@@ -1,107 +1,210 @@
 #include <iostream>
-#include <filesystem>
-#include <fstream>
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <string>
+#include <fstream>
 #include "client.h"
+#include "server.h"
 
-#pragma comment(lib, "ws2_32.lib")
-const int BUFFER_SIZE = 1024;
 
-void sendFile(SOCKET sock, const std::string& filePath);
+std::string extract_ip(const std::string& params) {
+	size_t startPos = params.find(" ") + 1;
+	size_t colonPos = params.find(":");
 
-void runClient(const std::string& serverIP, int serverPort) {
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        std::cerr << "Ошибка инициализации Winsock" << std::endl;
-        return;
-    }
-
-    SOCKET client_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (client_fd == INVALID_SOCKET) {
-        std::cerr << "Ошибка создания сокета" << std::endl;
-        WSACleanup();
-        return;
-    }
-
-    sockaddr_in serverAddr{};
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(serverPort);
-    inet_pton(AF_INET, serverIP.c_str(), &serverAddr.sin_addr);
-
-    if (connect(client_fd, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-        std::cerr << "Ошибка подключения к серверу" << std::endl;
-        closesocket(client_fd);
-        WSACleanup();
-        return;
-    }
-
-    std::cout << "Вы успешно подключены к серверу!" << std::endl;
-    std::string command, currentDir = std::filesystem::current_path().string();
-
-    while (true) {
-        std::cout << serverIP << ":" << serverPort << " - " << currentDir << " $ ";
-        std::getline(std::cin, command);
-
-        if (command.starts_with("cd ")) {
-            std::string path = command.substr(3);
-            if (std::filesystem::exists(path) && std::filesystem::is_directory(path)) {
-                currentDir = path;
-            }
-            else {
-                std::cerr << "Директория не найдена" << std::endl;
-            }
-        }
-        else if (command.starts_with("send ")) {
-            std::string filePath = currentDir + "\\" + command.substr(5);
-            std::ifstream file(filePath, std::ios::binary);
-
-            if (!file) {
-                std::cerr << "Не удалось открыть файл для отправки" << std::endl;
-                continue;
-            }
-
-            sendFile(client_fd, filePath);
-        }
-        else if (command == "exit") {
-            break;
-        }
-        else {
-            std::cerr << "Неизвестная команда" << std::endl;
-        }
-    }
-
-    closesocket(client_fd);
-    WSACleanup();
+	if (colonPos != std::string::npos) {
+		return params.substr(startPos, colonPos - startPos);
+	}
+	return params.substr(startPos);
 }
 
-void sendFile(SOCKET sock, const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary);
-    if (!file) {
-        std::cerr << "Ошибка: файл не найден" << std::endl;
-        return;
-    }
+int extract_port(const std::string& params) {
+	size_t portPos = 0;
+	size_t spacing = 0;
+	if (params.find("connect") != std::string::npos) {
+		portPos = params.find(":");
+		spacing = 1;
+	}
+	else if (params.find("server") != std::string::npos) {
+		portPos = params.find(" ");
+		spacing = 1;
+	}
 
-    std::filesystem::path p(filePath);
-    std::string fileName = p.filename().string();
-    size_t fileSize = std::filesystem::file_size(filePath);
+	if (portPos != std::string::npos) {
+		try {
+			int port = std::stoi(params.substr(portPos + spacing));
+			if (port >= 0 && port <= 65535) {
+				return port;
+			}
+			else {
+				std::cerr << "Error: port is out of range (0-65535)." << std::endl;
+				return Server::DEFAULT_PORT;
+			}
+		}
+		catch (const std::invalid_argument&) {
+			std::cerr << "Error: port is not a valid number." << std::endl;
+		}
+		catch (const std::out_of_range&) {
+			std::cerr << "Error: port is out of range." << std::endl;
+		}
+	}
+	std::cout << "Warning: no port specified, using default value: " << Server::DEFAULT_PORT << std::endl;
+	return Server::DEFAULT_PORT;
+}
 
-    send(sock, fileName.c_str(), fileName.size() + 1, 0);
+void Terminal::show() {
+	std::cout << std::endl << Terminal::ip_address << ":" << Terminal::port << " - " << Terminal::currentPath.string() << " $ ";
+}
 
-    char buffer[BUFFER_SIZE];
-    size_t totalBytesSent = 0;
+void Client::connect_command(std::string ip_address, int port) {
+	sockaddr_in serverAddr;
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_port = htons(port);
+	
+	closesocket(Client::clientSocket);
+	Client::clientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (Client::clientSocket == INVALID_SOCKET) {
+		std::cerr << "Socket creation error: " << WSAGetLastError() << std::endl;
+		return;
+	}
+	if (inet_pton(serverAddr.sin_family, ip_address.c_str(), &serverAddr.sin_addr) <= 0) {
+		std::cerr << "Wrong IP address " << ip_address.c_str() << std::endl;
+		return;
+	}
+	if (connect(Client::clientSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+		std::cerr << "Connection error" << std::endl;
+		return;
+	}
 
-    while (file.read(buffer, sizeof(buffer))) {
-        int bytesToSend = static_cast<int>(file.gcount());
-        send(sock, buffer, bytesToSend, 0);
-        totalBytesSent += bytesToSend;
-    }
+	std::cout	<< "Connection to " 
+				<< ip_address 
+				<< ":" 
+				<< port 
+				<< std::endl;
 
-    if (file.gcount() > 0) {
-        send(sock, buffer, static_cast<int>(file.gcount()), 0);
-        totalBytesSent += file.gcount();
-    }
+	char buffer[Server::BUFFER_SIZE];
+	int bytesReceived = recv(Client::clientSocket, buffer, sizeof(buffer) - 1, 0);
 
-    std::cout << "Файл " << fileName << " (" << totalBytesSent << " байт) отправлен!" << std::endl;
+	if (bytesReceived > 0) { 
+		buffer[bytesReceived] = '\0';
+		std::cout << buffer << std::endl; 
+		Terminal::ip_address = ip_address;
+		Terminal::port = port;
+	}
+	else if (bytesReceived == 0) {
+		std::cout << "Connection closed by server." << std::endl;
+	}
+	else {
+		std::cerr << "Receive failed: " << WSAGetLastError() << std::endl;
+	}
+}
+
+void Client::send_command(std::string filename) {
+	std::ifstream file(Terminal::currentPath / filename, std::ios::binary);
+	if (!file.is_open()) {
+		std::cerr << "Error: Could not open file " << Terminal::currentPath / filename << std::endl;
+		return;
+	}
+
+	size_t totalBytes;
+	file.seekg(0, std::ios::end);
+	std::streamsize size = file.tellg();
+	file.seekg(0, std::ios::beg);
+	if (size == 0) {
+		std::cerr << "Error: file is empty." << std::endl;
+		return;
+	}
+	std::cout << "File size: " << size << " bytes" << std::endl;
+
+
+	char packet[Server::BUFFER_SIZE];
+	send(Client::clientSocket, filename.c_str(), filename.length(), 0);
+	recv(Client::clientSocket, packet, sizeof(packet), 0);
+
+	while (file.read(packet, sizeof(packet))) {
+		int bytesRead = static_cast<int>(file.gcount());
+		if (send(Client::clientSocket, packet, bytesRead, 0) == SOCKET_ERROR) {
+			std::cerr << "Send error" << std::endl;
+			break;
+		}
+		std::cout << "Sent " << bytesRead << " bytes" << std::endl;
+	}
+	//не может дожрать остатки
+	if (file.gcount() > 0) {
+		send(Client::clientSocket, packet, static_cast<int>(file.gcount()), 0);
+	}
+	if (file.eof()) {
+		std::cout << "End of file reached." << std::endl;
+	}
+	else {
+		std::cerr << "File read error." << std::endl;
+	}
+
+	std::cout << "File was sent successfully" << std::endl;
+}
+
+void Terminal::ls_command() {
+	try {
+		for (const auto& entry : fs::directory_iterator(Terminal::currentPath)) {
+			std::cout << entry.path().filename().string() << std::endl;
+		}
+	}
+	catch (const fs::filesystem_error& fs_error) {
+		std::cerr << "Error: " << fs_error.what() << std::endl;
+	}
+}
+
+void Terminal::cd_command(std::string path) {
+	fs::path newPath = path.empty() ? Terminal::currentPath : fs::path(path);
+	if (path == "..") {
+		newPath = Terminal::currentPath.parent_path();
+	}
+	if (!newPath.is_absolute()) {
+		newPath = Terminal::currentPath / newPath;
+	}
+	if (fs::exists(newPath) && fs::is_directory(newPath)) {
+		Terminal::currentPath = fs::canonical(newPath);
+	}
+	else {
+		std::cout << "Wrong path: " << newPath.string() << std::endl;
+	}
+}
+
+
+void Terminal::commandHandler(std::string command) {
+	if (command == "cd") {
+		std::cout << "Wrong path";
+		return;
+	}
+	if (command == "connect") {
+		std::cout << "Wrong params. Use: connect <IP:PORT> syntax" << std::endl;
+		return;
+	}
+	if (command == "send") {
+		std::cout << "Wrong params. Use: send <filename.extension> syntax" << std::endl;
+		return;
+	}
+	if (command.substr(0, command.find(" ")) == "cd") {
+		std::string params = command.substr(command.find(" ") + 1); 
+		Terminal::cd_command(params);
+	}
+	if (command == "ls") {
+		Terminal::ls_command(); 
+	}
+	if ((command.substr(0, command.find(" ")) == "connect")) {
+		std::string ip_address = extract_ip(command); 
+		int port = extract_port(command); 
+
+		if (port != -1) {
+			Client::connect_command(ip_address, port);
+		}
+	}
+	if (command.substr(0, command.find(" ")) == "send") {
+		Client::send_command(command.substr(command.find("send") + 5));
+	}
+	if ((command.substr(0, command.find(" ")) == "server")) {
+
+		if (Server::isRunning) {
+			std::cerr << "Server is already running" << std::endl;
+			return;
+		}
+		Server::run_server(extract_port(command));
+	}
 }

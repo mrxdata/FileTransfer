@@ -1,55 +1,50 @@
 #include <iostream>
 #include <string>
-#include <sstream>
 #include "client.h"
 #include "server.h"
 
-int main() {
-    setlocale(LC_ALL, "ru");
+void show() {
+    std::cout << R"(
+    ##############################################################
+    #                                                            #
+    #      ________      ________  _________    ________         #
+    #     |\   ____\    |\  _____\|\___   ___\ |\   __  \        #
+    #     \ \  \___|_   \ \  \__/ \|___ \  \_| \ \  \|\  \       #
+    #      \ \_____  \   \ \   __\     \ \  \   \ \   ____\      #
+    #       \|____|\  \   \ \  \_|      \ \  \   \ \  \___|      #
+    #         ____\_\  \   \ \__\        \ \__\   \ \__\         #
+    #        |\_________\   \|__|         \|__|    \|__|         #
+    #        \|_________|                                        #
+    #                                                            #
+    #               * C++ Version: 20                            #
+    #               * OpenSSL Version: 3.3.2                     #
+    #               * https://github.com/mrxdata                 #
+    #                                                            #
+    ##############################################################
+    )" << std::endl;
+}
 
-    std::string mode;
-    std::cout << "Вы хотите запустить сервер или клиент? (server/client): ";
-    std::cin >> mode;
-    std::cin.ignore();
 
-    if (mode == "server") {
-        int port;
-        std::string baseDir;
-
-        std::cout << "Введите порт для сервера (по умолчанию 54000): ";
-        std::cin >> port;
-        std::cin.ignore();
-        std::cout << "Введите базовую директорию для сохранения файлов: ";
-        std::getline(std::cin, baseDir);
-
-        if (baseDir.empty()) {
-            baseDir = std::filesystem::current_path().string();
-        }
-
-        startServer(port, baseDir);
+int main(int argc, char* argv[]) {
+    WSADATA wsaData;
+    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);  
+    if (result != 0) {
+        std::cerr << "Winsock initialization error: " << result << std::endl;
+        return 1;
     }
-    else if (mode == "client") {
-        std::string serverAddress;
-        std::cout << "Введите адрес сервера в формате IP:PORT: ";
-        std::getline(std::cin, serverAddress);
+    show();
+    std::string command;
 
-        std::string ip;
-        int port;
-        size_t colonPos = serverAddress.find(':');
-        if (colonPos != std::string::npos) {
-            ip = serverAddress.substr(0, colonPos);
-            port = std::stoi(serverAddress.substr(colonPos + 1));
-        }
-        else {
-            std::cerr << "Неверный формат IP:PORT" << std::endl;
-            return 1;
-        }
+    while (true) {
+        Terminal::show();
+        Terminal::commandHandler([](std::string cmd) {
+            std::getline(std::cin, cmd); 
+            return cmd; 
+            }(""));
 
-        runClient(ip, port);
-    }
-    else {
-        std::cerr << "Неверный выбор режима" << std::endl;
+
     }
 
+    WSACleanup();
     return 0;
 }

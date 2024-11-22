@@ -1,98 +1,108 @@
-#include "server.h"
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include <iostream>
-#include <winsock2.h>
-#include <WS2tcpip.h> 
-#include <filesystem>
+#include <thread>
 #include <fstream>
+#include <filesystem>
+#include "server.h"
+#include "client.h"
+#include <chrono>
 
-const int BUFFER_SIZE = 1024; 
+#pragma comment(lib, "ws2_32.lib")
 
-void receiveFile(SOCKET sock, const std::filesystem::path& baseDir, const char* clientIP, int clientPort);
+void handleClient(SOCKET clientSocket, sockaddr_in clientAddr) {
+	char packet[Server::BUFFER_SIZE];
+	char clientIP[INET_ADDRSTRLEN];
+	int bytesReceived;
+	int clientPort = ntohs(clientAddr.sin_port);
+	inet_ntop(AF_INET, &clientAddr.sin_addr, clientIP, sizeof(clientIP));
 
-void startServer(int port, const std::filesystem::path& baseDir) {
-    WSADATA wsaData;
-    SOCKET server_fd, client_fd;
+	std::cout << "New connection - IP: " << clientIP << ":" << clientPort << " - Accept? (y/n): ";
+	char response;
+	std::cin >> response;
 
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        std::cerr << "Ошибка инициализации Winsock" << std::endl;
-        return;
-    }
+	if (response == 'y' || response == 'Y') {
+		std::string message = "Connection established";
 
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == INVALID_SOCKET) {
-        std::cerr << "Ошибка создания сокета" << std::endl;
-        WSACleanup();
-        return;
-    }
+		if (int sendResult = send(clientSocket, message.c_str(), message.size(), 0) == SOCKET_ERROR) {
+			std::cerr << "Failed to send message: " << WSAGetLastError() << std::endl;
+		}
+		std::cout << message << std::endl;
 
-    sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = INADDR_ANY;
+	}
+	else {
+		std::string message = "Connection lost";
 
-    if (bind(server_fd, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
-        std::cerr << "Ошибка привязки сокета" << std::endl;
-        closesocket(server_fd);
-        WSACleanup();
-        return;
-    }
+		if (int sendResult = send(clientSocket, message.c_str(), message.size(), 0) == SOCKET_ERROR) {
+			std::cerr << "Failed to send message: " << WSAGetLastError() << std::endl;
+		}
+		std::cout << message << std::endl;
+	}
 
-    if (listen(server_fd, SOMAXCONN) == SOCKET_ERROR) {
-        std::cerr << "Ошибка прослушивания порта" << std::endl;
-        closesocket(server_fd);
-        WSACleanup();
-        return;
-    }
+	
 
-    std::cout << "Сервер запущен на порту " << port << " с базовой директорией \"" << baseDir << "\"" << std::endl;
-
-    sockaddr_in clientAddr;
-    int clientAddrSize = sizeof(clientAddr);
-    client_fd = accept(server_fd, (sockaddr*)&clientAddr, &clientAddrSize);
-    if (client_fd == INVALID_SOCKET) {
-        std::cerr << "Ошибка подключения клиента" << std::endl;
-        closesocket(server_fd);
-        WSACleanup();
-        return;
-    }
-
-    char clientIP[INET_ADDRSTRLEN]; 
-    inet_ntop(AF_INET, &clientAddr.sin_addr, clientIP, sizeof(clientIP)); 
-    int clientPort = ntohs(clientAddr.sin_port);
-    std::cout << "Клиент " << clientIP << " использует порт " << clientPort << " - Подключен" << std::endl;
-
-    receiveFile(client_fd, baseDir, clientIP, clientPort);
-
-    closesocket(client_fd);
-    closesocket(server_fd);
-    WSACleanup();
+	while (Server::isRunning) 
+	{
+		bytesReceived = recv(clientSocket, packet, sizeof(packet), 0);
+		std::string fileName(packet, bytesReceived);
+		const char* status = "OK";
+		std::cout << "Status: OK" << std::endl;
+		send(clientSocket, status, sizeof(status), 0);
+		std::ofstream outFile(Terminal::currentPath / fileName, std::ios::binary);
+		std::cout << "Status: waiting" << std::endl;
+		int i = 0;
+		//не понимает что файл получен
+		while ((bytesReceived = recv(clientSocket, packet, sizeof(packet), 0)) > 0) {
+			outFile.write(packet, bytesReceived);
+			std::cout << "Status: Receiving... " << i << std::endl;
+			i++;
+		}
+		outFile.close();
+		std::cout << "File was received successfully" << std::endl;
+	}
+	closesocket(clientSocket);
 }
 
-void receiveFile(SOCKET sock, const std::filesystem::path& baseDir, const char* clientIP, int clientPort) {
-    char fileName[BUFFER_SIZE];
-    int bytesReceived = recv(sock, fileName, BUFFER_SIZE, 0);
+void Server::run_server(int port) {
+	Server::isRunning = true;
+	Server::serverAddr.sin_family = AF_INET;
+	Server::serverAddr.sin_port = htons(port); //22
+	inet_pton(serverAddr.sin_family, "127.0.0.1", &serverAddr.sin_addr); 
 
-    if (bytesReceived <= 0) {
-        std::cerr << "Ошибка при получении имени файла" << std::endl;
-        return;
-    }
+	std::cout	<< "Server is running on: " 
+				<< inet_ntoa(serverAddr.sin_addr) 
+				<< ":" 
+				<< ntohs(serverAddr.sin_port) 
+				<< std::endl;
 
-    std::filesystem::path filePath = baseDir / fileName;
-    std::ofstream file(filePath, std::ios::binary);
-    if (!file) {
-        std::cerr << "Ошибка: невозможно создать файл" << std::endl;
-        return;
-    }
+	SOCKET listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-    char buffer[BUFFER_SIZE];
-    size_t totalBytesReceived = 0;
+	if (listeningSocket == INVALID_SOCKET) {
+		std::cerr << "Socket creation error: " << WSAGetLastError() << std::endl;
+		return;
+	}
+	if (bind(listeningSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+		std::cerr << "Socket binding error: " << WSAGetLastError() << std::endl;
+		return;
+	}
 
-    while ((bytesReceived = recv(sock, buffer, sizeof(buffer), 0)) > 0) {
-        file.write(buffer, bytesReceived);
-        totalBytesReceived += bytesReceived;
-    }
+	if (listen(listeningSocket, MAX_CONNECTIONS) == SOCKET_ERROR) {
+		std::cerr << "Socket listening error: " << WSAGetLastError() << std::endl;
+		return; 
+	}
+	std::cout << "Listening..." << std::endl;
 
-    std::cout << "Клиент " << clientIP << " использует порт " << clientPort
-        << ", отправил файл \"" << fileName << "\" размером " << totalBytesReceived
-        << " байт - Директория: " << baseDir << std::endl;
+	while (isRunning) {
+		sockaddr_in clientAddr;
+		int clientAddrSize = sizeof(clientAddr);
+
+		SOCKET clientSocket = accept(listeningSocket, (SOCKADDR*)&clientAddr, &clientAddrSize);
+		if (clientSocket == INVALID_SOCKET) {
+			std::cerr << "Accept failed: " << WSAGetLastError() << std::endl;
+			continue;
+		}
+
+		std::thread clientThread(handleClient, clientSocket, clientAddr);
+		clientThread.detach();
+	}
+	Server::isRunning = false;
 }
