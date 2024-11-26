@@ -42,22 +42,26 @@ void handleClient(SOCKET clientSocket, sockaddr_in clientAddr) {
 
 	while (Server::isRunning) 
 	{
+		std::streamsize fileSize;
+		std::streamsize bytesReceivedTotal = 0;
+
 		bytesReceived = recv(clientSocket, packet, sizeof(packet), 0);
 		std::string fileName(packet, bytesReceived);
+
 		const char* status = "OK";
-		std::cout << "Status: OK" << std::endl;
 		send(clientSocket, status, sizeof(status), 0);
+
 		std::ofstream outFile(Terminal::currentPath / fileName, std::ios::binary);
-		std::cout << "Status: waiting" << std::endl;
-		int i = 0;
-		//не понимает что файл получен
-		while ((bytesReceived = recv(clientSocket, packet, sizeof(packet), 0)) > 0) {
+
+		recv(clientSocket, reinterpret_cast<char*>(&fileSize), sizeof(fileSize), 0);
+		while (bytesReceivedTotal < fileSize) {
+			bytesReceived = recv(clientSocket, packet, sizeof(packet), 0);
 			outFile.write(packet, bytesReceived);
-			std::cout << "Status: Receiving... " << i << std::endl;
-			i++;
-		}
+			bytesReceivedTotal += bytesReceived;
+		}	
 		outFile.close();
-		std::cout << "File was received successfully" << std::endl;
+
+		std::cout << "File was received" << std::endl;
 	}
 	closesocket(clientSocket);
 }

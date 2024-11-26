@@ -105,39 +105,30 @@ void Client::send_command(std::string filename) {
 
 	size_t totalBytes;
 	file.seekg(0, std::ios::end);
-	std::streamsize size = file.tellg();
+	std::streamsize fileSize = file.tellg();
 	file.seekg(0, std::ios::beg);
-	if (size == 0) {
+	if (fileSize == 0) {
 		std::cerr << "Error: file is empty." << std::endl;
 		return;
 	}
-	std::cout << "File size: " << size << " bytes" << std::endl;
+	std::cout << "File size: " << fileSize << " bytes" << std::endl;
 
 
 	char packet[Server::BUFFER_SIZE];
 	send(Client::clientSocket, filename.c_str(), filename.length(), 0);
 	recv(Client::clientSocket, packet, sizeof(packet), 0);
+	send(Client::clientSocket, reinterpret_cast<char*>(&fileSize), sizeof(fileSize), 0);
 
-	while (file.read(packet, sizeof(packet))) {
+	while (!file.eof()) {
+		file.read(packet, sizeof(packet));
 		int bytesRead = static_cast<int>(file.gcount());
 		if (send(Client::clientSocket, packet, bytesRead, 0) == SOCKET_ERROR) {
 			std::cerr << "Send error" << std::endl;
 			break;
 		}
-		std::cout << "Sent " << bytesRead << " bytes" << std::endl;
-	}
-	//не может дожрать остатки
-	if (file.gcount() > 0) {
-		send(Client::clientSocket, packet, static_cast<int>(file.gcount()), 0);
-	}
-	if (file.eof()) {
-		std::cout << "End of file reached." << std::endl;
-	}
-	else {
-		std::cerr << "File read error." << std::endl;
-	}
+		}
 
-	std::cout << "File was sent successfully" << std::endl;
+	std::cout << "File was sent" << std::endl;
 }
 
 void Terminal::ls_command() {
