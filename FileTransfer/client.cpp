@@ -1,9 +1,35 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <openssl/err.h>
 #include "client.h"
 #include "server.h"
 
+SSL_CTX* setupClientContext(const char* certFile, const char* keyFile, const char* caFile) {
+	SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+	if (!ctx) {
+		std::cerr << "Failed to create SSL context" << std::endl;
+		return nullptr;
+	}
+
+	if (SSL_CTX_use_certificate_file(ctx, certFile, SSL_FILETYPE_PEM) <= 0) {
+		ERR_print_errors_fp(stderr);
+		return nullptr;
+	}
+
+	if (SSL_CTX_use_PrivateKey_file(ctx, keyFile, SSL_FILETYPE_PEM) <= 0) {
+		ERR_print_errors_fp(stderr);
+		return nullptr;
+	}
+
+	if (SSL_CTX_load_verify_locations(ctx, caFile, nullptr) <= 0) {
+		ERR_print_errors_fp(stderr);
+		return nullptr;
+	}
+
+	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
+	return ctx;
+}
 
 std::string extract_ip(const std::string& params) {
 	size_t startPos = params.find(" ") + 1;
@@ -54,6 +80,12 @@ void Terminal::show() {
 }
 
 void Client::connect_command(std::string ip_address, int port) {
+	const char* certFile = "cert/client/client.crt";
+	const char* keyFile = "cert/client/client.key";
+	const char* caFile = "cert/CA/ca.crt";
+	Client::ctx = setupClientContext(certFile, keyFile, caFile);
+	if (!Client::ctx) return;
+
 	sockaddr_in serverAddr;
 	serverAddr.sin_family = AF_INET;
 	serverAddr.sin_port = htons(port);
@@ -79,12 +111,27 @@ void Client::connect_command(std::string ip_address, int port) {
 				<< port 
 				<< std::endl;
 
-	char buffer[Server::BUFFER_SIZE];
-	int bytesReceived = recv(Client::clientSocket, buffer, sizeof(buffer) - 1, 0);
+	Client::ssl = SSL_new(Client::ctx);
+	SSL_set_fd(ssl, clientSocket);
+
+	if (SSL_connect(ssl) <= 0) {
+		std::cerr << "SSL handshake failed" << std::endl; 
+		ERR_print_errors_fp(stderr);
+		SSL_free(Client::ssl);
+		closesocket(Client::clientSocket);
+		SSL_CTX_free(Client::ctx);
+		return;
+	}
+
+	std::cout << "Waiting for handshake" << std::endl; 
+
+	char buffer[Server::BUFFER_SIZE]{};
+	int bytesReceived = SSL_read(ssl, buffer, sizeof(buffer) - 1); 
 
 	if (bytesReceived > 0) { 
 		buffer[bytesReceived] = '\0';
-		std::cout << buffer << std::endl; 
+		std::cout << "Server response: " << std::string(buffer, bytesReceived) << std::endl;
+		//std::cout << buffer << std::endl; 
 		Terminal::ip_address = ip_address;
 		Terminal::port = port;
 	}
@@ -115,14 +162,14 @@ void Client::send_command(std::string filename) {
 
 
 	char packet[Server::BUFFER_SIZE];
-	send(Client::clientSocket, filename.c_str(), filename.length(), 0);
-	recv(Client::clientSocket, packet, sizeof(packet), 0);
-	send(Client::clientSocket, reinterpret_cast<char*>(&fileSize), sizeof(fileSize), 0);
+	SSL_write(Client::ssl, filename.c_str(), filename.length());
+	SSL_read(Client::ssl, packet, sizeof(packet));
+	SSL_write(Client::ssl, reinterpret_cast<char*>(&fileSize), sizeof(fileSize));
 
 	while (!file.eof()) {
 		file.read(packet, sizeof(packet));
 		int bytesRead = static_cast<int>(file.gcount());
-		if (send(Client::clientSocket, packet, bytesRead, 0) == SOCKET_ERROR) {
+		if (SSL_write(Client::ssl, packet, bytesRead) == SOCKET_ERROR) {
 			std::cerr << "Send error" << std::endl;
 			break;
 		}

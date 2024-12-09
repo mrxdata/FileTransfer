@@ -26,6 +26,10 @@ void show() {
 
 
 int main(int argc, char* argv[]) {
+    setlocale(LC_ALL, "ru");
+    SSL_library_init();
+    SSLeay_add_ssl_algorithms();
+    SSL_load_error_strings();
     WSADATA wsaData;
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);  
     if (result != 0) {

@@ -7,12 +7,18 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FileTransfer", "FileTransfe
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		CMAKE|x64 = CMAKE|x64
+		CMAKE|x86 = CMAKE|x86
 		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86
 		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D575DC98-C78A-40BF-8F1D-4460AFCA973E}.CMAKE|x64.ActiveCfg = CMAKE|x64
+		{D575DC98-C78A-40BF-8F1D-4460AFCA973E}.CMAKE|x64.Build.0 = CMAKE|x64
+		{D575DC98-C78A-40BF-8F1D-4460AFCA973E}.CMAKE|x86.ActiveCfg = CMAKE|Win32
+		{D575DC98-C78A-40BF-8F1D-4460AFCA973E}.CMAKE|x86.Build.0 = CMAKE|Win32
 		{D575DC98-C78A-40BF-8F1D-4460AFCA973E}.Debug|x64.ActiveCfg = Debug|x64
 		{D575DC98-C78A-40BF-8F1D-4460AFCA973E}.Debug|x64.Build.0 = Debug|x64
 		{D575DC98-C78A-40BF-8F1D-4460AFCA973E}.Debug|x86.ActiveCfg = Debug|Win32

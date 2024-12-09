@@ -4,10 +4,13 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <filesystem>
+#include <openssl/ssl.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
 namespace fs = std::filesystem;
+
+SSL_CTX* setupClientContext(const char* certFile, const char* keyFile, const char* caFile);
 
 class Terminal {
 public:
@@ -22,6 +25,8 @@ public:
 
 class Client {
 public:
+	static inline SSL* ssl;
+	static inline SSL_CTX* ctx;
 	static inline SOCKET clientSocket;
 	static void connect_command(std::string ip_address, int port);
 	static void send_command(std::string filename);

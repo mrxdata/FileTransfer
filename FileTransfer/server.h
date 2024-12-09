@@ -10,9 +10,9 @@ namespace fs = std::filesystem;
 class Server {
 public:
 	static constexpr unsigned int BUFFER_SIZE = 4096;
-	static void run_server(int port);
 	static constexpr unsigned int DEFAULT_PORT = 22;
 	static constexpr unsigned int MAX_CONNECTIONS = 10;
 	static inline bool isRunning;
 	static inline sockaddr_in serverAddr;
+	static void run_server(int port);
 };
