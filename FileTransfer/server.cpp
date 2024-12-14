@@ -126,7 +126,8 @@ void Server::run_server(int port) {
 
 	Server::serverAddr.sin_family = AF_INET;
 	Server::serverAddr.sin_port = htons(port); //22
-	inet_pton(serverAddr.sin_family, "127.0.0.1", &serverAddr.sin_addr); 
+	Server::serverAddr.sin_addr.s_addr = INADDR_ANY;
+	//inet_pton(serverAddr.sin_family, "127.0.0.1", &serverAddr.sin_addr); 
 
 	std::cout	<< "Server is running on: " 
 				<< inet_ntoa(serverAddr.sin_addr) 
@@ -138,15 +139,18 @@ void Server::run_server(int port) {
 
 	if (listeningSocket == INVALID_SOCKET) {
 		std::cerr << "Socket creation error: " << WSAGetLastError() << std::endl;
+		Server::isRunning = false;
 		return;
 	}
 	if (bind(listeningSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
 		std::cerr << "Socket binding error: " << WSAGetLastError() << std::endl;
+		Server::isRunning = false;
 		return;
 	}
 
 	if (listen(listeningSocket, MAX_CONNECTIONS) == SOCKET_ERROR) {
 		std::cerr << "Socket listening error: " << WSAGetLastError() << std::endl;
+		Server::isRunning = false;
 		return; 
 	}
 	std::cout << "Listening..." << std::endl;
