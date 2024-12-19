@@ -1,35 +1,6 @@
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <openssl/err.h>
 #include "client.h"
 #include "server.h"
-
-SSL_CTX* setupClientContext(const char* certFile, const char* keyFile, const char* caFile) {
-	SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
-	if (!ctx) {
-		std::cerr << "Failed to create SSL context" << std::endl;
-		return nullptr;
-	}
-
-	if (SSL_CTX_use_certificate_file(ctx, certFile, SSL_FILETYPE_PEM) <= 0) {
-		ERR_print_errors_fp(stderr);
-		return nullptr;
-	}
-
-	if (SSL_CTX_use_PrivateKey_file(ctx, keyFile, SSL_FILETYPE_PEM) <= 0) {
-		ERR_print_errors_fp(stderr);
-		return nullptr;
-	}
-
-	if (SSL_CTX_load_verify_locations(ctx, caFile, nullptr) <= 0) {
-		ERR_print_errors_fp(stderr);
-		return nullptr;
-	}
-
-	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
-	return ctx;
-}
+#include "certmanager.h"
 
 std::string extract_ip(const std::string& params) {
 	size_t startPos = params.find(" ") + 1;
@@ -80,16 +51,13 @@ void Terminal::show() {
 }
 
 void Client::connect_command(std::string ip_address, int port) {
-	const char* certFile = "cert/client/client.crt";
-	const char* keyFile = "cert/client/client.key";
-	const char* caFile = "cert/CA/ca.crt";
-	Client::ctx = setupClientContext(certFile, keyFile, caFile);
+	Client::ctx = CertManager::setupSSLContext(false);
 	if (!Client::ctx) return;
 
 	sockaddr_in serverAddr;
 	serverAddr.sin_family = AF_INET;
 	serverAddr.sin_port = htons(port);
-	
+
 	closesocket(Client::clientSocket);
 	Client::clientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (Client::clientSocket == INVALID_SOCKET) {
@@ -105,33 +73,31 @@ void Client::connect_command(std::string ip_address, int port) {
 		return;
 	}
 
-	std::cout	<< "Connection to " 
-				<< ip_address 
-				<< ":" 
-				<< port 
-				<< std::endl;
+	std::cout << "Connection to "
+		<< ip_address
+		<< ":"
+		<< port
+		<< std::endl;
 
 	Client::ssl = SSL_new(Client::ctx);
 	SSL_set_fd(ssl, clientSocket);
 
 	if (SSL_connect(ssl) <= 0) {
-		std::cerr << "SSL handshake failed" << std::endl; 
-		ERR_print_errors_fp(stderr);
+		std::cerr << "SSL handshake failed" << std::endl;
 		SSL_free(Client::ssl);
 		closesocket(Client::clientSocket);
 		SSL_CTX_free(Client::ctx);
 		return;
 	}
 
-	std::cout << "Waiting for handshake" << std::endl; 
+	std::cout << "Waiting for handshake" << std::endl;
 
 	char buffer[Server::BUFFER_SIZE]{};
-	int bytesReceived = SSL_read(ssl, buffer, sizeof(buffer) - 1); 
+	int bytesReceived = SSL_read(ssl, buffer, sizeof(buffer) - 1);
 
-	if (bytesReceived > 0) { 
+	if (bytesReceived > 0) {
 		buffer[bytesReceived] = '\0';
 		std::cout << "Server response: " << std::string(buffer, bytesReceived) << std::endl;
-		//std::cout << buffer << std::endl; 
 		Terminal::ip_address = ip_address;
 		Terminal::port = port;
 	}
@@ -144,6 +110,11 @@ void Client::connect_command(std::string ip_address, int port) {
 }
 
 void Client::send_command(std::string filename) {
+	if (Client::ssl == nullptr) {
+		std::cerr << "Error: Not connected to the server." << std::endl;
+		return;
+	}
+
 	std::ifstream file(Terminal::currentPath / filename, std::ios::binary);
 	if (!file.is_open()) {
 		std::cerr << "Error: Could not open file " << Terminal::currentPath / filename << std::endl;
@@ -173,7 +144,7 @@ void Client::send_command(std::string filename) {
 			std::cerr << "Send error" << std::endl;
 			break;
 		}
-		}
+	}
 
 	std::cout << "File was sent" << std::endl;
 }
@@ -205,6 +176,53 @@ void Terminal::cd_command(std::string path) {
 	}
 }
 
+void handleCrtKeyCommand(const std::string& command) {
+	std::vector<std::string> args;
+	std::string temp;
+	std::istringstream stream(command);
+
+	while (stream >> temp) {
+		args.push_back(temp);
+	}
+
+	if (args.empty() || args.at(0) != "crtkey") {
+		std::cerr << "Usage: crtkey <gen|save|use> [filename]\n";
+		return;
+	}
+
+	if (args.at(1) == "gen") {
+		std::cout << "Generating key...\n";
+		CertManager::generatePEM();
+
+		if (args.size() == 4 && args.at(2) == "save") {
+			std::string filename = args.at(3);
+			std::cout << "Saving key to file: " << filename << "\n";
+			CertManager::savePEM(filename);
+		}
+	}
+	else if (args.at(1) == "save") {
+		if (args.size() < 3) {
+			std::cerr << "Usage: crtkey save <filename>\n";
+			return;
+		}
+
+		std::string filename = args.at(2);
+		std::cout << "Saving key to file: " << filename << "\n";
+		CertManager::savePEM(filename);
+	}
+	else if (args.at(1) == "use") {
+		if (args.size() < 3) {
+			std::cerr << "Usage: crtkey use <filename>\n";
+			return;
+		}
+		std::cout << "Using PEM file: " << args.at(2) << "\n";
+		CertManager::usePEM(args.at(2));
+	}
+	else {
+		std::cerr << "Invalid command or arguments. Usage: crtkey <gen|save|use> [filename]\n";
+	}
+}
+
 
 void Terminal::commandHandler(std::string command) {
 	if (command == "cd") {
@@ -220,15 +238,15 @@ void Terminal::commandHandler(std::string command) {
 		return;
 	}
 	if (command.substr(0, command.find(" ")) == "cd") {
-		std::string params = command.substr(command.find(" ") + 1); 
+		std::string params = command.substr(command.find(" ") + 1);
 		Terminal::cd_command(params);
 	}
 	if (command == "ls") {
-		Terminal::ls_command(); 
+		Terminal::ls_command();
 	}
 	if ((command.substr(0, command.find(" ")) == "connect")) {
-		std::string ip_address = extract_ip(command); 
-		int port = extract_port(command); 
+		std::string ip_address = extract_ip(command);
+		int port = extract_port(command);
 
 		if (port != -1) {
 			Client::connect_command(ip_address, port);
@@ -244,5 +262,9 @@ void Terminal::commandHandler(std::string command) {
 			return;
 		}
 		Server::run_server(extract_port(command));
+	}
+
+	if (command.substr(0, command.find(" ")) == "crtkey") {
+		handleCrtKeyCommand(command);
 	}
 }

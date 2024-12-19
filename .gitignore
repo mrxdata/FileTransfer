@@ -363,3 +363,10 @@ MigrationBackup/
 FodyWeavers.xsd
 /FileTransfer/cert
 /FileTransfer/build
+/FileTransfer/FileTransfer.vcxproj
+/FileTransfer/FileTransfer.vcxproj.filters
+/FileTransfer/test.pem
+/FileTransfer/test2.pem
+/FileTransfer/test3.pem
+*.pem
+/FileTransfer/FileTransfer.vcxproj

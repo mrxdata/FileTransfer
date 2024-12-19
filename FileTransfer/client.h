@@ -1,16 +1,16 @@
 #pragma once
 
+#include <iostream>
 #include <string>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <filesystem>
+#include <fstream>
 #include <openssl/ssl.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
 namespace fs = std::filesystem;
-
-SSL_CTX* setupClientContext(const char* certFile, const char* keyFile, const char* caFile);
 
 class Terminal {
 public:
