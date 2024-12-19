@@ -22,7 +22,7 @@ Designed for Windows OS, it supports essential file transfer commands with a sim
 Launch the application in either server or client mode. Use the following commands to interact with the application. 
 To create a server or connect to a server, you first need to generate ("crtkey gen") or use a PEM file ("crtkey use") that must contain a private key and a certificate.
 
-### Commands
+## Commands
 
 - **server**  
 Runs the server side of the application.  
